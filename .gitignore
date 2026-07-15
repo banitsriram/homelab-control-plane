@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Local secrets / config overrides — never commit real hosts or keys
+.env
+.env.local
+*.local.sh
