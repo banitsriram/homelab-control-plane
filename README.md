@@ -43,6 +43,10 @@ Running headless with the lid shut means overriding the default suspend-on-lid b
 
 ## The ops dashboard
 
+![The smart_display.sh dashboard running on the Dell Latitude — btop, gping, and tty-clock in a tmux triple-pane layout](docs/dashboard.jpg)
+
+*The real thing: `smart_display.sh` running headless on the Latitude's own screen.*
+
 `smart_display.sh` turns the laptop's own screen into a live telemetry board using `tmux`:
 
 - **Left** — `btop`: CPU / RAM / disk / network vitals
