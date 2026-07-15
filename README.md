@@ -1,4 +1,4 @@
-# ⚡ Clutch Control Plane
+# ⚡ Homelab Control Plane
 
 A recycled **Dell Latitude 3410** turned into a 24/7 headless Ubuntu server — the always-on **"Brain"** of a home lab: reachable from anywhere over Tailscale SSH, running with the lid closed, with a physical-screen ops dashboard and application workloads in Docker.
 

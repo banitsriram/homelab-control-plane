@@ -1,6 +1,6 @@
 # Engineering Log
 
-Full build notes for the Clutch Control Plane node — a Dell Latitude 3410 running headless Ubuntu Server, managed remotely from macOS.
+Full build notes for the Homelab Control Plane node — a Dell Latitude 3410 running headless Ubuntu Server, managed remotely from macOS.
 
 The sections below cover what's actually built. Planned layers (Cloudflare Tunnel, Redis, cloud GPU burst) are listed in the [roadmap](#6-roadmap) and are not yet deployed.
 
