@@ -1,0 +1,12 @@
+# /etc/systemd/system/homelab-health.service
+# One-shot health probe, fired by homelab-health.timer. setup.sh substitutes
+# __REPO_DIR__ with the checkout path at install time.
+[Unit]
+Description=Homelab Control Plane health check
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/homelab/health.env
+ExecStart=__REPO_DIR__/healthcheck.sh

@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 560" font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Homelab Control Plane architecture: a macOS client reaches a headless Dell Latitude (The Brain) over Tailscale SSH; the Brain runs the tmux dashboard, Docker/Kairos, a health timer and hardened SSH/firewall, and is built to burst ML jobs to cloud GPUs (The Brawn, planned).">
+  <defs>
+    <linearGradient id="brain" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#111c30"/>
+      <stop offset="1" stop-color="#0d1626"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#34d3ee"/>
+    </marker>
+    <marker id="arrowMuted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#5b6b8c"/>
+    </marker>
+  </defs>
+
+  <!-- self-contained background so the figure reads on light or dark pages -->
+  <rect width="940" height="560" rx="16" fill="#0b1220"/>
+
+  <text x="34" y="44" fill="#e6edf6" font-size="21" font-weight="700">Homelab Control Plane</text>
+  <text x="34" y="66" fill="#8aa0c6" font-size="13">Brain / Brawn split — cheap always-on local node orchestrates; heavy compute bursts to the cloud</text>
+
+  <!-- client -->
+  <g>
+    <rect x="34" y="150" width="168" height="118" rx="12" fill="#0f1a2b" stroke="#1f2b45"/>
+    <text x="118" y="196" fill="#e6edf6" font-size="15" font-weight="600" text-anchor="middle">macOS client</text>
+    <text x="118" y="218" fill="#8aa0c6" font-size="12" text-anchor="middle">remote terminal</text>
+    <text x="118" y="240" fill="#8aa0c6" font-size="12" text-anchor="middle">campus / NAT / anywhere</text>
+  </g>
+
+  <!-- tailscale link -->
+  <line x1="202" y1="209" x2="300" y2="209" stroke="#34d3ee" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="251" y="196" fill="#34d3ee" font-size="11.5" font-weight="600" text-anchor="middle">Tailscale SSH</text>
+  <text x="251" y="230" fill="#8aa0c6" font-size="10.5" text-anchor="middle">mesh VPN</text>
+
+  <!-- brain card -->
+  <rect x="300" y="96" width="606" height="272" rx="14" fill="url(#brain)" stroke="#2a3a5e"/>
+  <text x="322" y="128" fill="#34d3ee" font-size="12" font-weight="700" letter-spacing="1.5">THE BRAIN · always-on</text>
+  <text x="322" y="150" fill="#e6edf6" font-size="14.5" font-weight="600">Dell Latitude 3410 · Ubuntu Server · headless, lid-closed · 24/7</text>
+
+  <!-- inner boxes -->
+  <g font-size="12.5">
+    <rect x="322" y="170" width="180" height="86" rx="10" fill="#132441" stroke="#33507f"/>
+    <text x="336" y="196" fill="#e6edf6" font-weight="600">smart_display.sh</text>
+    <text x="336" y="216" fill="#8aa0c6" font-size="11.5">tmux triple-pane</text>
+    <text x="336" y="233" fill="#8aa0c6" font-size="11.5">physical-screen ops board</text>
+    <text x="336" y="250" fill="#3ecf8e" font-size="11">▸ autostarts on boot</text>
+
+    <rect x="514" y="170" width="180" height="86" rx="10" fill="#132441" stroke="#33507f"/>
+    <text x="528" y="196" fill="#e6edf6" font-weight="600">Docker Compose</text>
+    <text x="528" y="216" fill="#8aa0c6" font-size="11.5">Kairos (life dashboard)</text>
+    <text x="528" y="233" fill="#8aa0c6" font-size="11.5">restart: unless-stopped</text>
+    <text x="528" y="250" fill="#3ecf8e" font-size="11">▸ healthchecked</text>
+
+    <rect x="706" y="170" width="184" height="86" rx="10" fill="#132441" stroke="#33507f"/>
+    <text x="720" y="196" fill="#e6edf6" font-weight="600">systemd timer</text>
+    <text x="720" y="216" fill="#8aa0c6" font-size="11.5">health probe / 5 min</text>
+    <text x="720" y="233" fill="#8aa0c6" font-size="11.5">ntfy push on failure</text>
+    <text x="720" y="250" fill="#3ecf8e" font-size="11">▸ disk · docker · app</text>
+  </g>
+
+  <!-- security ribbon -->
+  <rect x="322" y="270" width="568" height="80" rx="10" fill="#101d33" stroke="#2a3a5e"/>
+  <text x="336" y="296" fill="#f2c14e" font-size="12" font-weight="700">HARDENED PERIMETER</text>
+  <text x="336" y="320" fill="#8aa0c6" font-size="12">sshd: key-only, no root, no passwords</text>
+  <text x="336" y="338" fill="#8aa0c6" font-size="12">ufw: deny inbound, trust the tailnet</text>
+  <text x="700" y="320" fill="#8aa0c6" font-size="12">Tailscale: tagged node + ACLs</text>
+  <text x="700" y="338" fill="#8aa0c6" font-size="12">no inbound ports on the public internet</text>
+
+  <!-- brawn (planned) -->
+  <line x1="603" y1="368" x2="603" y2="418" stroke="#5b6b8c" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arrowMuted)"/>
+  <text x="620" y="398" fill="#5b6b8c" font-size="11">Redis queue dispatch (planned)</text>
+
+  <rect x="300" y="420" width="606" height="104" rx="14" fill="#0d1626" stroke="#33415f" stroke-dasharray="6 5"/>
+  <text x="322" y="450" fill="#5b6b8c" font-size="12" font-weight="700" letter-spacing="1.5">THE BRAWN · planned</text>
+  <text x="322" y="470" fill="#7d8fb3" font-size="12.5">On-demand GPU burst — the node orchestrates, heavy ML runs elsewhere and tears down</text>
+
+  <g font-size="12">
+    <rect x="322" y="482" width="176" height="30" rx="8" fill="#111c30" stroke="#33415f" stroke-dasharray="4 4"/>
+    <text x="410" y="502" fill="#8aa0c6" text-anchor="middle">Redis job queue</text>
+    <rect x="514" y="482" width="176" height="30" rx="8" fill="#111c30" stroke="#33415f" stroke-dasharray="4 4"/>
+    <text x="602" y="502" fill="#8aa0c6" text-anchor="middle">GCP Compute Engine</text>
+    <rect x="706" y="482" width="184" height="30" rx="8" fill="#111c30" stroke="#33415f" stroke-dasharray="4 4"/>
+    <text x="798" y="502" fill="#8aa0c6" text-anchor="middle">RunPod GPU</text>
+  </g>
+
+  <!-- legend -->
+  <g font-size="11">
+    <rect x="34" y="486" width="16" height="12" rx="3" fill="#132441" stroke="#33507f"/>
+    <text x="58" y="496" fill="#8aa0c6">running today</text>
+    <rect x="34" y="508" width="16" height="12" rx="3" fill="#111c30" stroke="#33415f" stroke-dasharray="4 4"/>
+    <text x="58" y="518" fill="#8aa0c6">planned</text>
+  </g>
+</svg>

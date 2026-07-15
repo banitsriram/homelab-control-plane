@@ -1,0 +1,27 @@
+// Tailscale ACL example for the control-plane node.
+// Paste into the Tailscale admin console (Access controls). This is the
+// "preferred" path from ENGINEERING §2: a tagged node provisioned with an
+// auth key, instead of a non-expiring personal key.
+//
+// Provision the node once:
+//   sudo tailscale up --ssh --advertise-tags=tag:homelab --authkey <key>
+{
+  "tagOwners": {
+    "tag:homelab": ["autogroup:admin"],
+  },
+
+  // Only you can reach the node; the node reaches nothing inbound-initiated.
+  "acls": [
+    { "action": "accept", "src": ["autogroup:member"], "dst": ["tag:homelab:*"] },
+  ],
+
+  // Tailscale SSH: your own devices may SSH into the node as a non-root user.
+  "ssh": [
+    {
+      "action": "accept",
+      "src":    ["autogroup:member"],
+      "dst":    ["tag:homelab"],
+      "users":  ["autogroup:nonroot"],
+    },
+  ],
+}

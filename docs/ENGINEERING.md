@@ -2,20 +2,34 @@
 
 Full build notes for the Homelab Control Plane node — a Dell Latitude 3410 running headless Ubuntu Server, managed remotely from macOS.
 
-The sections below cover what's actually built. Planned layers (Cloudflare Tunnel, Redis, cloud GPU burst) are listed in the [roadmap](#6-roadmap) and are not yet deployed.
+Everything below is applied by [`setup.sh`](../setup.sh) (idempotent, one step per section) — the manual commands are here so you understand *what* it does, not because you have to run them by hand. Planned layers (Cloudflare Tunnel, Redis, cloud GPU burst) are in the [roadmap](#9-roadmap) and not yet deployed.
+
+## Contents
+
+1. [Headless hardware configuration](#1-headless-hardware-configuration)
+2. [Remote access (Tailscale)](#2-remote-access-tailscale)
+3. [The telemetry dashboard](#3-the-telemetry-dashboard)
+4. [Debugging log — five real bugs](#4-debugging-log)
+5. [Application host — Kairos](#5-application-host--kairos)
+6. [Security perimeter](#6-security-perimeter)
+7. [Health & alerting](#7-health--alerting)
+8. [One-command bootstrap](#8-one-command-bootstrap)
+9. [Roadmap](#9-roadmap)
 
 ---
 
 ## 1. Headless hardware configuration
 
-The Latitude runs with its lid closed as an always-on server. By default Ubuntu suspends on lid close, so the `logind` behavior is overridden:
+The Latitude runs with its lid closed as an always-on server. By default Ubuntu suspends on lid close, so the `logind` behavior is overridden with a drop-in — [`configs/logind.conf.d/10-homelab-lid.conf`](../configs/logind.conf.d/10-homelab-lid.conf):
+
+```ini
+[Login]
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+HandleLidSwitchDocked=ignore
+```
 
 ```bash
-sudo nano /etc/systemd/logind.conf
-# set:
-#   HandleLidSwitch=ignore
-#   HandleLidSwitchExternalPower=ignore
-
 sudo systemctl restart systemd-logind
 ```
 
@@ -28,7 +42,7 @@ The client (macOS) reaches the server over a private [Tailscale](https://tailsca
 ```bash
 # On the server:
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
+sudo tailscale up --ssh
 ```
 
 Each node gets a stable `100.x.x.x` address on the tailnet; the client SSHes to that address.
@@ -39,10 +53,14 @@ Tailscale node keys expire periodically (default ~180 days) and normally need an
 
 Two ways to handle it:
 
-- **Disable key expiry** for this node in the Tailscale admin console. Simplest, but the node then holds a non-expiring key — weaker if the box is ever compromised.
-- **Preferred:** provision the node with a [tagged auth key](https://tailscale.com/kb/1085/auth-keys) and manage access with ACLs. Keeps expiry semantics without manual re-auth.
+- **Disable key expiry** for this node in the admin console. Simplest, but the node then holds a non-expiring key — weaker if the box is ever compromised.
+- **Preferred:** provision the node with a [tagged auth key](https://tailscale.com/kb/1085/auth-keys) and manage access with ACLs. Keeps expiry semantics without manual re-auth. A ready-to-paste policy is in [`configs/tailscale-acl.hujson`](../configs/tailscale-acl.hujson):
 
-This node currently uses disabled key expiry for simplicity; moving to a tagged auth key is a hardening step on the roadmap.
+  ```bash
+  sudo tailscale up --ssh --advertise-tags=tag:homelab --authkey <key>
+  ```
+
+This node started on disabled key expiry for simplicity; the tagged-key + ACL move is the documented hardening path.
 
 ## 3. The telemetry dashboard
 
@@ -60,6 +78,28 @@ sudo apt install -y tmux btop tty-clock
 sudo snap install gping
 sudo snap connect gping:network-observe
 ```
+
+### 3.1 Surviving a reboot
+
+A dashboard you have to relaunch by hand after every power blip isn't "always-on." The fix is autologin on the physical console plus a shell hook that exec's the script:
+
+- **tty1 autologin** — [`configs/getty@tty1.service.d/autologin.conf`](../configs/getty@tty1.service.d/autologin.conf) overrides `getty@tty1` to log the dashboard user in automatically:
+
+  ```ini
+  [Service]
+  ExecStart=
+  ExecStart=-/sbin/agetty --autologin <user> --noclear %I $TERM
+  ```
+
+- **launch hook** — `setup.sh` appends a guarded block to the user's `~/.bash_profile` so the dashboard starts *only* on the physical console, and never nests inside an existing tmux:
+
+  ```bash
+  if [[ "$(tty)" == "/dev/tty1" && -z "${TMUX:-}" ]]; then
+    exec "$REPO_DIR/smart_display.sh"
+  fi
+  ```
+
+The trade-off is explicit: anyone at the physical keyboard lands in a logged-in shell. Acceptable for a lid-closed box in your own space; don't do it on hardware other people can reach.
 
 ## 4. Debugging log
 
@@ -119,12 +159,65 @@ tmux set-option -g status off
 
 ## 5. Application host — Kairos
 
-The node hosts **Kairos** (a personal life dashboard) via Docker Compose. Notes:
+The node hosts **Kairos** (a personal life dashboard) via Docker Compose. The compose file ([`docker-compose.yml`](../docker-compose.yml)) encodes what was learned running it:
 
-- Environment is injected at **container creation**, not runtime — after editing `.env`, recreate the service (`docker compose up -d <svc>`), don't just restart it.
-- After a recreate the app needs a few seconds before it's listening; a connection refused right after boot means it's still starting.
+- Environment is injected at **container creation**, not runtime — after editing `.env`, recreate the service (`docker compose up -d kairos`), don't just restart it.
+- After a recreate the app needs a few seconds before it's listening; a connection refused right after boot means it's still starting — the compose `healthcheck` (with a `start_period`) models exactly this.
+- `restart: unless-stopped` brings it back after a host reboot; `json-file` log rotation keeps a chatty app from filling the disk.
 
-## 6. Roadmap
+## 6. Security perimeter
+
+A node reachable from anywhere needs a real perimeter. `setup.sh` applies three layers:
+
+- **SSH** — [`configs/sshd_config.d/10-homelab-hardening.conf`](../configs/sshd_config.d/10-homelab-hardening.conf): key-only, no root, no passwords, `MaxAuthTries 3`. The bootstrap refuses to apply it unless it first finds `authorized_keys` **or** Tailscale SSH — so it can't strand you. (Tailscale SSH doesn't go through `sshd`, so it keeps working even if the config is wrong; a useful backstop.)
+- **Firewall** — `ufw` set to deny-inbound by default, allow-all outbound, trust the `tailscale0` interface, and keep a LAN `OpenSSH` fallback so a tailnet hiccup can't lock you out:
+
+  ```bash
+  ufw default deny incoming
+  ufw allow in on tailscale0
+  ufw allow OpenSSH
+  ufw enable
+  ```
+
+- **Tailnet** — the [ACL example](../configs/tailscale-acl.hujson) scopes who can reach the tagged node and who can SSH to it as a non-root user.
+
+## 7. Health & alerting
+
+The dashboard is for when you're *looking*; the health timer is for when you're not. [`healthcheck.sh`](../healthcheck.sh) runs from a systemd timer ([`configs/homelab-health.timer`](../configs/homelab-health.timer)) every 5 minutes and checks:
+
+- root disk usage against a threshold,
+- the Docker daemon,
+- the Kairos HTTP endpoint,
+- the Tailscale link.
+
+On failure it pushes to [ntfy](https://ntfy.sh) and writes to syslog; it always exits `0` so a transient blip doesn't mark the unit failed. Config lives in `/etc/homelab/health.env`:
+
+```bash
+NTFY_URL=https://ntfy.sh/your-secret-topic
+KAIROS_URL=http://localhost:8080/
+DISK_THRESHOLD=90
+```
+
+Inspect it like any timer:
+
+```bash
+systemctl list-timers homelab-health.timer
+journalctl -t homelab-health --since -1h
+```
+
+## 8. One-command bootstrap
+
+[`setup.sh`](../setup.sh) turns a fresh Ubuntu box into everything above. It's **idempotent** (safe to re-run) and **modular** (run a subset by naming steps):
+
+```bash
+sudo ./setup.sh                     # everything, interactive
+sudo ./setup.sh --yes               # everything, no prompts
+sudo ./setup.sh ssh firewall        # just the perimeter
+```
+
+Steps: `packages · lid · ssh · firewall · dashboard · health · tailscale`. Each checks the current state before changing anything and prints what it did. `shellcheck` runs on every script in CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)), which also validates the compose file.
+
+## 9. Roadmap
 
 The node is built to grow into a Brain/Brawn split. Not yet deployed:
 

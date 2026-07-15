@@ -1,0 +1,34 @@
+# docker-compose.yml — the application layer for the control-plane node.
+#
+# Kairos (personal life dashboard) runs here. This is the pattern the node
+# actually uses, captured as code:
+#   - env injected at container *creation*, not runtime (ENGINEERING §5) — after
+#     editing .env, recreate:  docker compose up -d kairos  (a restart won't do)
+#   - restart: unless-stopped, so it comes back after a reboot
+#   - a healthcheck the node's own health probe can also read
+#   - bounded logs so a chatty app can't quietly fill the disk
+#
+# Copy .env.example → .env, adjust the port/health path to your app, then:
+#   docker compose up -d
+services:
+  kairos:
+    # Point this at however you ship Kairos — a local build or a published image.
+    build: ./kairos
+    # image: ghcr.io/banitsriram/kairos:latest
+    container_name: kairos
+    env_file: .env
+    ports:
+      - "8080:8080"          # host:container — match Kairos's listen port
+    restart: unless-stopped
+    healthcheck:
+      # Adjust to your app's health path / tooling (needs curl or wget in-image).
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
