@@ -120,8 +120,9 @@ step_health() {
   if [ ! -f /etc/homelab/health.env ]; then
     cat > /etc/homelab/health.env <<'EOF'
 # Health-check config. NTFY_URL is where alerts are pushed (blank = syslog only).
+# Container health (Kairos, redis, …) is read from Docker automatically.
 # NTFY_URL=https://ntfy.sh/your-secret-topic
-KAIROS_URL=http://localhost:8080/
+# KAIROS_URL=https://<your-tailscale-host>/api/health   # optional extra probe
 DISK_THRESHOLD=90
 EOF
   fi

@@ -1,34 +1,53 @@
-# docker-compose.yml — the application layer for the control-plane node.
+# docker-compose.yml — node-level infrastructure the control plane provides.
 #
-# Kairos (personal life dashboard) runs here. This is the pattern the node
-# actually uses, captured as code:
-#   - env injected at container *creation*, not runtime (ENGINEERING §5) — after
-#     editing .env, recreate:  docker compose up -d kairos  (a restart won't do)
-#   - restart: unless-stopped, so it comes back after a reboot
-#   - a healthcheck the node's own health probe can also read
-#   - bounded logs so a chatty app can't quietly fill the disk
+# The Kairos app is NOT here: it runs from its own repo and compose
+# (github.com/banitsriram/Kairos — a FastAPI backend + Caddy stack bound to the
+# tailnet). The node just clones it and `docker compose up -d`. Re-declaring it
+# here would only drift from the source of truth.
 #
-# Copy .env.example → .env, adjust the port/health path to your app, then:
-#   docker compose up -d
+# What lives here is the shared Brain/Brawn plumbing around the app:
+#   - redis      : the job queue the Brain pushes work onto  (see examples/jobqueue)
+#   - cloudflared: public ingress for selected HTTP services  (profile: ingress)
+#
+# Bring up what you need:
+#   docker compose up -d redis
+#   docker compose --profile ingress up -d cloudflared
 services:
-  kairos:
-    # Point this at however you ship Kairos — a local build or a published image.
-    build: ./kairos
-    # image: ghcr.io/banitsriram/kairos:latest
-    container_name: kairos
-    env_file: .env
-    ports:
-      - "8080:8080"          # host:container — match Kairos's listen port
+  redis:
+    image: redis:7-alpine
+    container_name: homelab-redis
     restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"     # loopback only — never exposed off the box
+    volumes:
+      - redis_data:/data
+    networks: [homelab]
     healthcheck:
-      # Adjust to your app's health path / tooling (needs curl or wget in-image).
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 30s
-      timeout: 5s
+      timeout: 3s
       retries: 3
-      start_period: 20s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+
+  # Public ingress via a named Cloudflare Tunnel. Off by default (profile).
+  # The token carries the tunnel's routing config — set which public hostname
+  # maps to which local service in the Cloudflare Zero Trust dashboard, pointing
+  # it at the node's Caddy (http://host.docker.internal:80). No inbound ports.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: homelab-tunnel
+    restart: unless-stopped
+    profiles: ["ingress"]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [homelab]
+
+volumes:
+  redis_data:
+
+networks:
+  homelab:
+    name: homelab      # shared: join Kairos (or a worker) to reach redis here

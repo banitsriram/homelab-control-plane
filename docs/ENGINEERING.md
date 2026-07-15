@@ -159,11 +159,20 @@ tmux set-option -g status off
 
 ## 5. Application host — Kairos
 
-The node hosts **Kairos** (a personal life dashboard) via Docker Compose. The compose file ([`docker-compose.yml`](../docker-compose.yml)) encodes what was learned running it:
+The node hosts **Kairos** (a personal life dashboard): a FastAPI backend behind a Caddy reverse proxy, bound to the tailnet with Caddy's internal TLS — never reachable from the public internet. Kairos ships its **own** `docker-compose.yml`, so the node runs it straight from source (`git clone … && docker compose up -d`); re-declaring it in this repo would only drift from that source of truth.
 
-- Environment is injected at **container creation**, not runtime — after editing `.env`, recreate the service (`docker compose up -d kairos`), don't just restart it.
-- After a recreate the app needs a few seconds before it's listening; a connection refused right after boot means it's still starting — the compose `healthcheck` (with a `start_period`) models exactly this.
-- `restart: unless-stopped` brings it back after a host reboot; `json-file` log rotation keeps a chatty app from filling the disk.
+What was worth capturing from running it:
+
+- Environment is injected at **container creation**, not runtime — after editing `.env`, recreate the service (`docker compose up -d`), don't just restart it.
+- After a recreate the backend needs a few seconds before it's listening; a connection refused right after boot means it's still starting. Kairos's compose models this with a `healthcheck` on `/health`, which the node's own [`healthcheck.sh`](../healthcheck.sh) then reads back via Docker — no app-specific URL needed.
+- The vault is a **read-only** bind mount and the SQLite DB a named volume, so a container rebuild never touches your data.
+
+### 5.1 Node services — Redis & Cloudflare Tunnel
+
+This repo's [`docker-compose.yml`](../docker-compose.yml) is the *node-level* plumbing around the app, not the app itself:
+
+- **Redis** (loopback-published) — the job queue for the Brain/Brawn split. See §9 and [`examples/jobqueue/`](../examples/jobqueue).
+- **Cloudflare Tunnel** — public ingress behind an `ingress` profile (off by default). A token-based named tunnel carries its own routing (set in the Cloudflare Zero Trust dashboard), pointing at the node's Caddy on `host.docker.internal:80`. No inbound ports, works through restrictive firewalls.
 
 ## 6. Security perimeter
 
@@ -219,8 +228,8 @@ Steps: `packages · lid · ssh · firewall · dashboard · health · tailscale`.
 
 ## 9. Roadmap
 
-The node is built to grow into a Brain/Brawn split. Not yet deployed:
+The node is built to grow into a Brain/Brawn split. Two pieces are **scaffolded** (code in-repo, not yet deployed), one is still ahead:
 
-- **Public ingress** — a Cloudflare Tunnel (`cloudflared`) to expose selected HTTP services through restrictive firewalls without inbound ports.
-- **Async job queue** — Redis to distribute background jobs without blocking request I/O.
-- **Cloud burst** — dispatch long-running ML workloads to on-demand GPU compute (GCP Compute Engine / RunPod) while the local node handles orchestration and state.
+- **Public ingress** 🧩 — a Cloudflare Tunnel (`cloudflared`) to expose selected HTTP services through restrictive firewalls without inbound ports. Service is in [`docker-compose.yml`](../docker-compose.yml) behind the `ingress` profile; remaining work is creating the tunnel and mapping a hostname in the Cloudflare dashboard.
+- **Async job queue** 🧩 — Redis distributes background jobs without blocking request I/O. Redis runs from the compose file; the dispatch pattern (enqueue + worker) is in [`examples/jobqueue/`](../examples/jobqueue). Remaining work is wiring a real producer (Kairos) and moving off a plain list if retries/scheduling are needed.
+- **Cloud burst** 🧭 — the `run_job` handler in the worker is the seam: replace the placeholder with provision-run-teardown against on-demand GPU compute (GCP Compute Engine / RunPod), so heavy ML runs elsewhere while the Brain keeps orchestration and state.

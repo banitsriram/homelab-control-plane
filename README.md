@@ -19,11 +19,12 @@ The design goal is a **Brain / Brawn split**: cheap local hardware stays on 24/7
 - [Security](#security)
 - [Health & alerting](#health--alerting)
 - [Application host (Kairos)](#application-host-kairos)
+- [Node services — job queue & ingress](#node-services--job-queue--ingress)
 - [Deep dive](#deep-dive)
 
 ## Status — built vs. planned
 
-Honest scope. Everything marked ✅ is running today, with the file that makes it real; 🧭 is the roadmap the node is built to grow into.
+Honest scope. ✅ is running today, with the file that makes it real; 🧩 has a working skeleton in-repo but isn't deployed yet; 🧭 is roadmap.
 
 | Layer | What | Where | State |
 |---|---|---|---|
@@ -31,13 +32,13 @@ Honest scope. Everything marked ✅ is running today, with the file that makes i
 | Remote access | Tailscale SSH from macOS — no port forwarding | [ENGINEERING §2](docs/ENGINEERING.md#2-remote-access-tailscale) | ✅ Running |
 | Ops dashboard | `tmux` triple-pane physical-screen telemetry | [`smart_display.sh`](smart_display.sh) | ✅ Running |
 | Boots itself | Dashboard auto-starts on reboot (tty1 autologin) | [`configs/getty@tty1.service.d/`](configs/getty@tty1.service.d) | ✅ Running |
-| Application host | **Kairos** (personal life dashboard) via Docker Compose | [`docker-compose.yml`](docker-compose.yml) | ✅ Running |
+| Application host | **Kairos** (FastAPI + Caddy) via Docker Compose, bound to the tailnet | [Kairos repo](https://github.com/banitsriram/Kairos) | ✅ Running |
 | Hardened perimeter | Key-only SSH, `ufw` deny-in, Tailscale ACLs | [`configs/sshd_config.d/`](configs/sshd_config.d) | ✅ Running |
 | Health & alerting | systemd timer → probe → ntfy push on failure | [`healthcheck.sh`](healthcheck.sh) | ✅ Running |
 | One-command bootstrap | Fresh box → this node, idempotent | [`setup.sh`](setup.sh) | ✅ Running |
-| Public ingress | Cloudflare Tunnel (`cloudflared`) for firewall-friendly HTTP | — | 🧭 Planned |
-| Job queue | Redis-backed async worker model | — | 🧭 Planned |
-| Cloud burst | Dispatch ML jobs to GCP Compute / RunPod GPUs | — | 🧭 Planned |
+| Public ingress | Cloudflare Tunnel (`cloudflared`) for firewall-friendly HTTP | [`docker-compose.yml`](docker-compose.yml) | 🧩 Scaffolded |
+| Job queue | Redis-backed async worker (Brain→Brawn dispatch) | [`examples/jobqueue/`](examples/jobqueue) | 🧩 Scaffolded |
+| Cloud burst | Dispatch ML jobs to GCP Compute / RunPod GPUs | [`examples/jobqueue/`](examples/jobqueue) | 🧭 Planned |
 
 ## Quickstart
 
@@ -71,7 +72,8 @@ make up         # start the Kairos app layer
 setup.sh              one-command, idempotent bootstrap (packages → hardening → autostart → health)
 smart_display.sh      the tmux physical-screen ops dashboard
 healthcheck.sh        node + app probe, pushes ntfy alerts on failure
-docker-compose.yml    the Kairos application layer (env-at-creation, healthcheck, bounded logs)
+docker-compose.yml    node-level infra services — redis job queue, cloudflared ingress
+examples/jobqueue/    minimal Brain→Brawn dispatch (enqueue + worker) over redis
 Makefile              one entrypoint for the common tasks
 configs/              system drop-ins setup.sh installs (logind, getty autologin, sshd, ufw, health timer, Tailscale ACL)
 docs/ENGINEERING.md   full build log — headless config, Tailscale, the dashboard, and five real bugs
@@ -125,11 +127,26 @@ NTFY_URL=https://ntfy.sh/your-secret-topic
 
 ## Application host (Kairos)
 
-The node hosts **[Kairos](https://github.com/banitsriram/Kairos)** (a personal life dashboard) via Docker Compose. [`docker-compose.yml`](docker-compose.yml) captures the pattern the node actually uses: env injected at container *creation* (see [ENGINEERING §5](docs/ENGINEERING.md#5-application-host--kairos)), `restart: unless-stopped`, a healthcheck, and bounded logs.
+The node hosts **[Kairos](https://github.com/banitsriram/Kairos)** (a personal life dashboard) — a FastAPI backend behind a Caddy reverse proxy, bound to the tailnet and never exposed to the public internet. Kairos ships its own `docker-compose.yml`, so the node just runs it from source:
 
 ```bash
-cp .env.example .env    # fill in
+git clone https://github.com/banitsriram/Kairos.git && cd Kairos
+cp .env.example .env    # fill in (see ENGINEERING §5)
 docker compose up -d
+```
+
+This repo doesn't re-declare Kairos (that would only drift from its source of truth) — it carries the *node-level* infrastructure around it.
+
+## Node services — job queue & ingress
+
+[`docker-compose.yml`](docker-compose.yml) here is the shared Brain/Brawn plumbing:
+
+- **Redis** — the job queue the always-on Brain pushes work onto. A ~40-line dispatch skeleton (enqueue + worker) lives in [`examples/jobqueue/`](examples/jobqueue); its `run_job` is the seam where a job bursts out to a cloud GPU.
+- **Cloudflare Tunnel** (`cloudflared`, off by default behind a profile) — public ingress for selected HTTP services with no inbound ports.
+
+```bash
+docker compose up -d redis
+docker compose --profile ingress up -d cloudflared   # needs TUNNEL_TOKEN in .env
 ```
 
 ## Deep dive
